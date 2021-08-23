@@ -1,6 +1,6 @@
 import { expect as expectCDK, matchTemplate, MatchStyle } from '@aws-cdk/assert';
 import * as cdk from '@aws-cdk/core';
-import * as AwsOnCallBot from '../lib/aws-on-call-bot-stack';
+import * as AwsOnCallBot from '../src/aws-on-call-bot-stack';
 
 test('Empty Stack', () => {
     const app = new cdk.App();
