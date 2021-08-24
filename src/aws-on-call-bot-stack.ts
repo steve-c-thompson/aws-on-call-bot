@@ -1,10 +1,13 @@
 import * as cdk from '@aws-cdk/core';
 import * as ec2 from "@aws-cdk/aws-ec2";
 import { KeyPair } from 'cdk-ec2-key-pair';
-import * as iam from '@aws-cdk/aws-iam'
-import * as path from 'path';
-import { Asset } from '@aws-cdk/aws-s3-assets';
+import * as iam from '@aws-cdk/aws-iam';
+import * as ecs from '@aws-cdk/aws-ecs';
+// import * as asg from '@aws-cdk/aws-autoscaling'
+// import * as path from 'path';
+// import { Asset } from '@aws-cdk/aws-s3-assets';
 import {readFileSync} from "fs";
+// import {AsgCapacityProvider} from "@aws-cdk/aws-ecs";
 
 export class AwsOnCallBotStack extends cdk.Stack {
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
@@ -27,6 +30,9 @@ export class AwsOnCallBotStack extends cdk.Stack {
         subnetType: ec2.SubnetType.PUBLIC
       }]});
 
+    // Create an ECS cluster
+    const cluster = new ecs.Cluster(this, 'Cluster', { vpc });
+
     // Open port 22 for SSH connection from anywhere
     const securityGroup = new ec2.SecurityGroup(this, 'SecurityGroup', {
       vpc,
@@ -44,11 +50,11 @@ export class AwsOnCallBotStack extends cdk.Stack {
     const role = new iam.Role(this, 'ec2Role', {
       assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
       managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonS3ReadOnlyAccess'),
+        iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'),
       ],
     })
 
-    // role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'))
+    // role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonS3ReadOnlyAccess'))
 
     // Latest AMAZON LINUX AMI
     const ami = new ec2.AmazonLinuxImage({ generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2 });
@@ -59,11 +65,38 @@ export class AwsOnCallBotStack extends cdk.Stack {
       vpcSubnets: {
         subnetType: ec2.SubnetType.PUBLIC,
       },
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.NANO),
+      role: role,
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MICRO),
       machineImage: ami,
-      securityGroup: securityGroup
+      securityGroup: securityGroup,
+      keyName: key.keyPairName
     });
 
+    // const userData = ec2.UserData.forLinux();
+    // const scriptData = ["yum update -y",
+    // "sudo su",
+    //
+    // "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash",
+    // ". ~/.nvm/nvm.sh",
+    // "nvm install node",
+    //     ];
+    // userData.addCommands(...scriptData);
+
+    // const autoScalingGroup = new asg.AutoScalingGroup(this, id = "ASG", {
+    //   vpc: vpc,
+    //   machineImage: ami,
+    //   desiredCapacity: 1,
+    //   maxCapacity:1,
+    //   minCapacity:1,
+    //   instanceType: ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MICRO),
+    //   userData: userData,
+    // });
+    //
+    // const asgCapacity = new AsgCapacityProvider(scope, "asgProvider", {autoScalingGroup: autoScalingGroup});
+    //
+    // cluster.addAsgCapacityProvider(asgCapacity);
+
+    /*
     // Create an asset that will be used as part of User Data to run on first load
     // const asset = new Asset(this, 'Asset', { path: path.join(__dirname, '../src/config.sh') });
     // const localPath = ec2Instance.userData.addS3DownloadCommand({
@@ -76,6 +109,7 @@ export class AwsOnCallBotStack extends cdk.Stack {
     //     arguments: '--verbose -y'
     // });
     // asset.grantRead(ec2Instance.role);
+    */
 
     const userDataScript = readFileSync('./lib/user-data.sh', 'utf8');
     ec2Instance.addUserData(userDataScript);
