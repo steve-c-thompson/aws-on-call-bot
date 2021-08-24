@@ -43,8 +43,8 @@ export class AwsOnCallBotStack extends cdk.Stack {
     securityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(22), 'allow public ssh access')
     securityGroup.addIngressRule(
         ec2.Peer.anyIpv4(),
-        ec2.Port.tcp(3100),
-        'allow HTTP traffic to port 3100 for bot node js',
+        ec2.Port.tcp(3000),
+        'allow HTTP traffic to port 3000 for bot node js',
     );
 
     const role = new iam.Role(this, 'ec2Role', {
