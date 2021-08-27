@@ -1,12 +1,11 @@
 import * as cdk from "@aws-cdk/core";
 import * as ec2 from "@aws-cdk/aws-ec2";
 import * as ecs from "@aws-cdk/aws-ecs";
-import * as secrets from "@aws-cdk/aws-secretsmanager";
 import { AddCapacityOptions } from "@aws-cdk/aws-ecs/lib/cluster";
 import { Ec2TaskDefinition, Secret } from "@aws-cdk/aws-ecs";
 import * as iam from "@aws-cdk/aws-iam";
 import { KeyPair } from "cdk-ec2-key-pair";
-import { newEcsSecret } from "./utils/utils";
+import { newEcsSecret, smSecretFromName } from "./utils/utils";
 import { awsInfo } from "./utils/utils";
 import { Secret as SmSecret } from "@aws-cdk/aws-secretsmanager/lib/secret";
 
@@ -62,10 +61,16 @@ export class AwsOnCallBotEcsStack extends cdk.Stack {
       },
       keyName: key.keyPairName,
     };
-    const secret = SmSecret.fromSecretPartialArn(
-      scope,
-      awsInfo.getSecretName(),
-      awsInfo.getSlackBotSecretArn()
+    // const secret = SmSecret.fromSecretPartialArn(
+    //   this,
+    //   awsInfo.getSecretName(),
+    //   awsInfo.getSlackBotSecretArn()
+    // );
+
+    const secret = smSecretFromName(
+      this,
+      "oncall-bot-secret",
+      awsInfo.getSecretName()
     );
 
     const role = new iam.Role(this, "OncallSecretReader", {
@@ -84,7 +89,7 @@ export class AwsOnCallBotEcsStack extends cdk.Stack {
       SLACK_GOOGLE_SHEET_ID: newEcsSecret(secret, "SLACK_GOOGLE_SHEET_ID"),
     };
 
-    const ec2Task: Ec2TaskDefinition = new Ec2TaskDefinition(scope, "ec2-task");
+    const ec2Task: Ec2TaskDefinition = new Ec2TaskDefinition(this, "ec2-task");
 
     ec2Task.addContainer("defaultContainer", {
       image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),

@@ -1,9 +1,18 @@
 import { Secret as EcsSecret } from "@aws-cdk/aws-ecs";
-import { ISecret } from "@aws-cdk/aws-secretsmanager";
+import { Secret as SmSecret, ISecret } from "@aws-cdk/aws-secretsmanager";
+import { Construct } from "@aws-cdk/core";
 
 /** Creates a Secret Manager secret that we directly consume in ECS. */
 export function newEcsSecret(secret: ISecret, name: string): EcsSecret {
   return EcsSecret.fromSecretsManager(secret, name);
+}
+
+export function smSecretFromName(
+  scope: Construct,
+  id: string,
+  secretName: string
+): ISecret {
+  return SmSecret.fromSecretNameV2(scope, id, secretName);
 }
 
 class AwsInfo {
@@ -28,8 +37,7 @@ class AwsInfo {
   }
 
   getSecretName(): string {
-    // -NMgAjb
-    return "OncallSlackBot-test";
+    return "OncallSlackBot-test"; // -NMgAjb
   }
 }
 
