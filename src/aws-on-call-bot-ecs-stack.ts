@@ -5,7 +5,7 @@ import { AddCapacityOptions } from "@aws-cdk/aws-ecs/lib/cluster";
 import { Ec2TaskDefinition, Secret } from "@aws-cdk/aws-ecs";
 import * as iam from "@aws-cdk/aws-iam";
 import { KeyPair } from "cdk-ec2-key-pair";
-import { newEcsSecret, smSecretFromName } from "./utils/utils";
+import { buildPublicVpc, newEcsSecret, smSecretFromName } from "./utils/utils";
 import { awsInfo } from "./utils/utils";
 import { Secret as SmSecret } from "@aws-cdk/aws-secretsmanager/lib/secret";
 
@@ -14,16 +14,7 @@ export class AwsOnCallBotEcsStack extends cdk.Stack {
     super(scope, id, props);
 
     // Create new VPC
-    const vpc = new ec2.Vpc(this, "on-call-cdk-vpc", {
-      natGateways: 0,
-      subnetConfiguration: [
-        {
-          cidrMask: 24,
-          name: "public",
-          subnetType: ec2.SubnetType.PUBLIC,
-        },
-      ],
-    });
+    const vpc = buildPublicVpc(this, "on-call-cdk-vpc");
 
     // Open port 22 for SSH connection from anywhere
     const securityGroup = new ec2.SecurityGroup(this, "SecurityGroup", {

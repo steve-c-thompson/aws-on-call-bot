@@ -7,6 +7,7 @@ import * as ecs from "@aws-cdk/aws-ecs";
 // import * as path from 'path';
 
 import { readFileSync } from "fs";
+import { buildPublicVpc } from "./utils/utils";
 // import {AsgCapacityProvider} from "@aws-cdk/aws-ecs";
 
 export class AwsOnCallBotStack extends cdk.Stack {
@@ -22,16 +23,7 @@ export class AwsOnCallBotStack extends cdk.Stack {
     key.grantReadOnPublicKey;
 
     // Create new VPC
-    const vpc = new ec2.Vpc(this, "on-call-cdk-vpc", {
-      natGateways: 0,
-      subnetConfiguration: [
-        {
-          cidrMask: 24,
-          name: "public",
-          subnetType: ec2.SubnetType.PUBLIC,
-        },
-      ],
-    });
+    const vpc = buildPublicVpc(this, "on-call-cdk-vpc");
 
     // Create an ECS cluster
     // const cluster = new ecs.Cluster(this, 'Cluster', { vpc });
@@ -73,9 +65,6 @@ export class AwsOnCallBotStack extends cdk.Stack {
     // Instance details
     const ec2Instance = new ec2.Instance(this, "On-Call Bot", {
       vpc,
-      vpcSubnets: {
-        subnetType: ec2.SubnetType.PUBLIC,
-      },
       role: role,
       instanceType: ec2.InstanceType.of(
         ec2.InstanceClass.T2,
