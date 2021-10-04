@@ -1,25 +1,32 @@
 import * as cdk from "@aws-cdk/core";
 import * as ec2 from "@aws-cdk/aws-ec2";
 import * as ecs from "@aws-cdk/aws-ecs";
+import {
+  AwsLogDriverMode,
+  Ec2TaskDefinition,
+  NetworkMode,
+} from "@aws-cdk/aws-ecs";
+import * as path from "path";
+import * as ecrdeploy from "cdk-ecr-deployment";
+
 import { AddCapacityOptions } from "@aws-cdk/aws-ecs/lib/cluster";
-import { Ec2TaskDefinition, Secret } from "@aws-cdk/aws-ecs";
-import * as iam from "@aws-cdk/aws-iam";
 import { KeyPair } from "cdk-ec2-key-pair";
-import { buildPublicVpc, newEcsSecret, smSecretFromName } from "./utils/utils";
-import { awsInfo } from "./utils/utils";
-import { Secret as SmSecret } from "@aws-cdk/aws-secretsmanager/lib/secret";
+import { buildPublicVpc, buildSecrets } from "./utils/utils";
+import { Repository } from "@aws-cdk/aws-ecr";
+import { DockerImageAsset } from "@aws-cdk/aws-ecr-assets";
+import { RetentionDays } from "@aws-cdk/aws-logs";
 
 export class AwsOnCallBotEcsStack extends cdk.Stack {
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
     // Create new VPC
-    const vpc = buildPublicVpc(this, "on-call-cdk-vpc");
+    const vpc = buildPublicVpc(this, "on-call-ecs-vpc");
 
     // Open port 22 for SSH connection from anywhere
     const securityGroup = new ec2.SecurityGroup(this, "SecurityGroup", {
       vpc,
-      securityGroupName: "on-call-bot-sg",
+      securityGroupName: "on-call-bot-ecs-sg",
       description: "Allow ssh access to ec2 instances from anywhere",
       allowAllOutbound: true,
     });
@@ -47,56 +54,75 @@ export class AwsOnCallBotEcsStack extends cdk.Stack {
       ),
       maxCapacity: 1,
       minCapacity: 1,
+      // needed to make ec2 instances accessible by IP address
       vpcSubnets: {
         subnetType: ec2.SubnetType.PUBLIC,
       },
       keyName: key.keyPairName,
     };
-    // const secret = SmSecret.fromSecretPartialArn(
-    //   this,
-    //   awsInfo.getSecretName(),
-    //   awsInfo.getSlackBotSecretArn()
-    // );
 
-    const secret = smSecretFromName(
-      this,
-      "oncall-bot-secret",
-      awsInfo.getSecretName()
-    );
+    const secrets = buildSecrets(this);
 
-    const role = new iam.Role(this, "OncallSecretReader", {
-      assumedBy: new iam.AccountRootPrincipal(),
+    const repository = new Repository(this, "OnCallBotRepo", {
+      imageScanOnPush: true,
     });
-    secret.grantRead(role);
 
-    const secrets: Record<string, Secret> = {
-      SLACK_SIGNING_SECRET: newEcsSecret(secret, "SLACK_SIGNING_SECRET"),
-      SLACK_BOT_TOKEN: newEcsSecret(secret, "SLACK_BOT_TOKEN"),
-      GOOGLE_SERVICE_ACCOUNT_EMAIL: newEcsSecret(
-        secret,
-        "GOOGLE_SERVICE_ACCOUNT_EMAIL"
+    // Docker image
+    const imageName = "on-call-bot";
+    const asset = new DockerImageAsset(this, "CDKDockerImage", {
+      directory: path.relative(__dirname, imageName),
+    });
+
+    new ecrdeploy.ECRDeployment(this, "DeployDockerImage", {
+      src: new ecrdeploy.DockerImageName(asset.imageUri),
+      dest: new ecrdeploy.DockerImageName(
+        // `${cdk.Aws.ACCOUNT_ID}.dkr.ecr.${cdk.Aws.REGION}.amazonaws.com/${imageName}`
+        repository.repositoryUri
       ),
-      GOOGLE_PRIVATE_KEY: newEcsSecret(secret, "GOOGLE_PRIVATE_KEY"),
-      SLACK_GOOGLE_SHEET_ID: newEcsSecret(secret, "SLACK_GOOGLE_SHEET_ID"),
-    };
+    });
 
-    const ec2Task: Ec2TaskDefinition = new Ec2TaskDefinition(this, "ec2-task");
+    const ec2Task: Ec2TaskDefinition = new Ec2TaskDefinition(this, "ec2-task", {
+      networkMode: NetworkMode.AWS_VPC,
+    });
 
-    ec2Task.addContainer("defaultContainer", {
-      image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
-      memoryLimitMiB: 512,
+    const container = ec2Task.addContainer("defaultContainer", {
+      // fromDockerImageAsset does not work with ECRDeployment
+      // image: ecs.ContainerImage.fromDockerImageAsset(asset),
+      // image: ecs.EcrImage.fromDockerImageAsset(asset),
+      // image: ecs.RepositoryImage.fromDockerImageAsset(asset),
+
+      // Works when repository used
+      image: ecs.ContainerImage.fromEcrRepository(repository),
+      // image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
+
+      memoryLimitMiB: 256,
       secrets: secrets,
+      portMappings: [{ containerPort: 3000, hostPort: 3000 }],
+      logging: new ecs.AwsLogDriver({
+        streamPrefix: "OnCallBotStr",
+        mode: AwsLogDriverMode.NON_BLOCKING,
+        logRetention: RetentionDays.ONE_DAY,
+      }),
     });
+
     // Create an ECS cluster
-    const cluster = new ecs.Cluster(this, "Cluster", {
-      vpc,
-      capacity: ec2Capacity,
+    // Adding Capacity with deprecated method because cluster.connections.addSecurityGroup does not work
+    const cluster = new ecs.Cluster(this, "BotCluster", {
+      vpc: vpc,
+      //capacity: ec2Capacity,
     });
+
+    //cluster.connections.addSecurityGroup(securityGroup);
+
+    cluster
+      .addCapacity("BotClusterCapacity", ec2Capacity)
+      .addSecurityGroup(securityGroup);
 
     // Instantiate an Amazon ECS Service
-    const ecsService = new ecs.Ec2Service(this, "Service", {
+    const ecsService = new ecs.Ec2Service(this, "BotService", {
       cluster: cluster,
       taskDefinition: ec2Task,
+      securityGroups: [securityGroup],
     });
 
     // Create outputs for connecting
@@ -104,7 +130,7 @@ export class AwsOnCallBotEcsStack extends cdk.Stack {
     new cdk.CfnOutput(this, "Key Name", { value: key.keyPairName });
     new cdk.CfnOutput(this, "Download Key Command", {
       value:
-        "aws secretsmanager get-secret-value --secret-id ec2-ssh-key/cdk-keypair/private --query SecretString --output text > cdk-key.pem && chmod 400 cdk-key.pem",
+        "aws [--profile username] secretsmanager get-secret-value --secret-id ec2-ssh-key/cdk-keypair/private --query SecretString --output text > cdk-key.pem && chmod 400 cdk-key.pem",
     });
     new cdk.CfnOutput(this, "ssh command", {
       value:
