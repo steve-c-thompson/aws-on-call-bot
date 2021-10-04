@@ -23,8 +23,7 @@ export function buildSecrets2(stack: Stack) {
 }
 
 export function newEcsSecret(secret: ISecret, name: string): EcsSecret {
-  const s = EcsSecret.fromSecretsManager(secret, name);
-  return s;
+  return EcsSecret.fromSecretsManager(secret, name);
 }
 
 export function smSecretFromName(

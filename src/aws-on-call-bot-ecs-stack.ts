@@ -6,6 +6,8 @@ import {
   Ec2TaskDefinition,
   NetworkMode,
 } from "@aws-cdk/aws-ecs";
+import * as elb from "@aws-cdk/aws-elasticloadbalancing";
+import { LoadBalancingProtocol } from "@aws-cdk/aws-elasticloadbalancing";
 import * as path from "path";
 import * as ecrdeploy from "cdk-ecr-deployment";
 
@@ -35,10 +37,15 @@ export class AwsOnCallBotEcsStack extends cdk.Stack {
       ec2.Port.tcp(22),
       "allow public ssh access"
     );
+    // securityGroup.addIngressRule(
+    //   ec2.Peer.anyIpv4(),
+    //   ec2.Port.tcp(3000),
+    //   "allow HTTP traffic to port 3000 for bot node js"
+    // );
     securityGroup.addIngressRule(
       ec2.Peer.anyIpv4(),
-      ec2.Port.tcp(3000),
-      "allow HTTP traffic to port 3000 for bot node js"
+      ec2.Port.tcp(5000),
+      "allow HTTP traffic to port 5000 for bot node js"
     );
 
     const key = new KeyPair(this, "KeyPair", {
@@ -54,7 +61,7 @@ export class AwsOnCallBotEcsStack extends cdk.Stack {
       ),
       maxCapacity: 1,
       minCapacity: 1,
-      // needed to make ec2 instances accessible by IP address
+      // needed to make ec2 instances accessible by IP address when in awsvpc mode
       vpcSubnets: {
         subnetType: ec2.SubnetType.PUBLIC,
       },
@@ -82,7 +89,7 @@ export class AwsOnCallBotEcsStack extends cdk.Stack {
     });
 
     const ec2Task: Ec2TaskDefinition = new Ec2TaskDefinition(this, "ec2-task", {
-      networkMode: NetworkMode.AWS_VPC,
+      //networkMode: NetworkMode.AWS_VPC,
     });
 
     const container = ec2Task.addContainer("defaultContainer", {
@@ -97,7 +104,10 @@ export class AwsOnCallBotEcsStack extends cdk.Stack {
 
       memoryLimitMiB: 256,
       secrets: secrets,
-      portMappings: [{ containerPort: 3000, hostPort: 3000 }],
+      portMappings: [
+        // { containerPort: 3000, hostPort: 3000 },
+        { containerPort: 5000, hostPort: 5000 },
+      ],
       logging: new ecs.AwsLogDriver({
         streamPrefix: "OnCallBotStr",
         mode: AwsLogDriverMode.NON_BLOCKING,
@@ -122,8 +132,16 @@ export class AwsOnCallBotEcsStack extends cdk.Stack {
     const ecsService = new ecs.Ec2Service(this, "BotService", {
       cluster: cluster,
       taskDefinition: ec2Task,
-      securityGroups: [securityGroup],
+      //securityGroups: [securityGroup],
     });
+
+    // Load balancer
+    const lb = new elb.LoadBalancer(this, "LB", { vpc });
+    lb.addListener({
+      externalPort: 5000,
+      externalProtocol: LoadBalancingProtocol.TCP,
+    });
+    lb.addTarget(ecsService);
 
     // Create outputs for connecting
     new cdk.CfnOutput(this, "Cluster ARN", { value: cluster.clusterArn });
