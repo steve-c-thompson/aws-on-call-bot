@@ -141,7 +141,7 @@ class AwsInfo {
   }
 
   getSecretName(): string {
-    return "OncallSlackBot-test"; // -NMgAjb
+    return "OncallSlackBot-prod";
   }
 }
 

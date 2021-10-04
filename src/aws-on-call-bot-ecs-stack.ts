@@ -61,7 +61,7 @@ export class AwsOnCallBotEcsStack extends cdk.Stack {
       ),
       maxCapacity: 1,
       minCapacity: 1,
-      // needed to make ec2 instances accessible by IP address when in awsvpc mode
+      // can make ec2 instances accessible by IP address when using NAT gateway
       vpcSubnets: {
         subnetType: ec2.SubnetType.PUBLIC,
       },
@@ -100,7 +100,6 @@ export class AwsOnCallBotEcsStack extends cdk.Stack {
 
       // Works when repository used
       image: ecs.ContainerImage.fromEcrRepository(repository),
-      // image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
 
       memoryLimitMiB: 256,
       secrets: secrets,
@@ -121,9 +120,9 @@ export class AwsOnCallBotEcsStack extends cdk.Stack {
       vpc: vpc,
       //capacity: ec2Capacity,
     });
-
     //cluster.connections.addSecurityGroup(securityGroup);
 
+    // Adding security group allows ec2 instance to be access from internet
     cluster
       .addCapacity("BotClusterCapacity", ec2Capacity)
       .addSecurityGroup(securityGroup);
@@ -132,6 +131,7 @@ export class AwsOnCallBotEcsStack extends cdk.Stack {
     const ecsService = new ecs.Ec2Service(this, "BotService", {
       cluster: cluster,
       taskDefinition: ec2Task,
+      // available for awsvpc network mode
       //securityGroups: [securityGroup],
     });
 
