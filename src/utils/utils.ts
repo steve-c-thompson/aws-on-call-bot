@@ -1,11 +1,27 @@
 import { Secret, Secret as EcsSecret } from "@aws-cdk/aws-ecs";
 import { Secret as SmSecret, ISecret } from "@aws-cdk/aws-secretsmanager";
-import { Construct } from "@aws-cdk/core";
+import { Construct, Stack } from "@aws-cdk/core";
 import { Vpc } from "@aws-cdk/aws-ec2";
 import * as ec2 from "@aws-cdk/aws-ec2";
 import * as iam from "@aws-cdk/aws-iam";
 
 /** Creates a Secret Manager secret that we directly consume in ECS. */
+export function newEcsSecret2(stack: Stack, name: string): EcsSecret {
+  return EcsSecret.fromSecretsManager(
+    new SmSecret(stack, name, { secretName: name })
+  );
+}
+export function buildSecrets2(stack: Stack) {
+  const secrets: Record<string, Secret> = {
+    SLACK_SIGNING_SECRET: newEcsSecret2(stack, awsInfo.getSecretName()),
+    SLACK_BOT_TOKEN: newEcsSecret2(stack, awsInfo.getSecretName()),
+    GOOGLE_SERVICE_ACCOUNT_EMAIL: newEcsSecret2(stack, awsInfo.getSecretName()),
+    GOOGLE_PRIVATE_KEY: newEcsSecret2(stack, awsInfo.getSecretName()),
+    SLACK_GOOGLE_SHEET_ID: newEcsSecret2(stack, awsInfo.getSecretName()),
+  };
+  return secrets;
+}
+
 export function newEcsSecret(secret: ISecret, name: string): EcsSecret {
   const s = EcsSecret.fromSecretsManager(secret, name);
   return s;
@@ -21,19 +37,64 @@ export function smSecretFromName(
 
 export function buildPublicVpc(scope: Construct, name: string): Vpc {
   return new ec2.Vpc(scope, name, {
-    natGateways: 0,
-    subnetConfiguration: [
-      {
-        cidrMask: 24,
-        name: "public",
-        subnetType: ec2.SubnetType.PUBLIC,
-      },
-    ],
-    enableDnsSupport: true,
-    enableDnsHostnames: true,
+    natGateways: 1,
+    maxAzs: 1,
+    // subnetConfiguration: [
+    //   {
+    //     cidrMask: 24,
+    //     name: "public",
+    //     subnetType: ec2.SubnetType.PUBLIC,
+    //   },
+    // ],
+    // enableDnsSupport: true,
+    // enableDnsHostnames: true,
   });
 }
 
+// export function buildSecrets2(scope: Construct) {
+//   let secretStr, decodedBinarySecret;
+//   const client = new SecretsManager({
+//     region: awsInfo.getRegion(),
+//   });
+//   client.getSecretValue(
+//     { SecretId: awsInfo.getSecretName() },
+//     function (err, data) {
+//       if (err) {
+//         if (err.code === "DecryptionFailureException")
+//           // Secrets Manager can't decrypt the protected secret text using the provided KMS key.
+//           // Deal with the exception here, and/or rethrow at your discretion.
+//           throw err;
+//         else if (err.code === "InternalServiceErrorException")
+//           // An error occurred on the server side.
+//           // Deal with the exception here, and/or rethrow at your discretion.
+//           throw err;
+//         else if (err.code === "InvalidParameterException")
+//           // You provided an invalid value for a parameter.
+//           // Deal with the exception here, and/or rethrow at your discretion.
+//           throw err;
+//         else if (err.code === "InvalidRequestException")
+//           // You provided a parameter value that is not valid for the current state of the resource.
+//           // Deal with the exception here, and/or rethrow at your discretion.
+//           throw err;
+//         else if (err.code === "ResourceNotFoundException")
+//           // We can't find the resource that you asked for.
+//           // Deal with the exception here, and/or rethrow at your discretion.
+//           throw err;
+//       } else {
+//         // Decrypts secret using the associated KMS CMK.
+//         // Depending on whether the secret is a string or binary, one of these fields will be populated.
+//         if ("SecretString" in data) {
+//           secretStr = data.SecretString;
+//         } else {
+//           let buff = new Buffer(data.SecretBinary as string, "base64");
+//           secretStr = buff.toString("ascii");
+//         }
+//       }
+//
+//       // Your code goes here.
+//     }
+//   );
+// }
 export function buildSecrets(scope: Construct) {
   const secret = smSecretFromName(
     scope,
